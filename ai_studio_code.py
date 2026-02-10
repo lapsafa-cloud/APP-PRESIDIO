@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import os
+os.environ["GOOGLE_API_USE_MTLS_ENDPOINT"] = "never"
 import time
 
 # 1. Configuração da Página
@@ -59,22 +60,29 @@ if prompt := st.chat_input("Como posso ajudar?"):
 
     with st.chat_message("assistant"):
         try:
-            # O coração do seu projeto: RAG (Arquivos + Instrução + Pergunta)
+            # Testamos primeiro o modelo estável
+            model_name = "gemini-1.5-flash" 
+            
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                system_instruction="Você é um assistente da SAP-SC. Responda APENAS com base nos PDFs fornecidos. Se a informação não estiver lá, peça para contatarem um servidor oficial."
+                model_name=model_name,
+                system_instruction="Você é assistente da SAP-SC. Responda com base nos PDFs."
             )
             
-            # Criamos a lista de conteúdo enviando os arquivos primeiro e depois o prompt
-            conteudo = []
-            for f in st.session_state.base_docs:
-                conteudo.append(f)
-            conteudo.append(prompt)
+            # Montamos o conteúdo (arquivos + prompt)
+            conteudo = st.session_state.base_docs + [prompt]
             
             response = model.generate_content(conteudo)
-            
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
             
         except Exception as e:
-            st.error(f"Erro técnico: {e}")
+            if "404" in str(e):
+                # Se der 404, tentamos o caminho completo que a v1beta às vezes exige
+                try:
+                    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+                    response = model.generate_content(st.session_state.base_docs + [prompt])
+                    st.markdown(response.text)
+                except:
+                    st.error("O Google está recusando a conexão com este modelo específico. Verifique se sua chave API no AI Studio tem permissão para o 'Gemini 1.5 Flash'.")
+            else:
+                st.error(f"Erro técnico: {e}")
