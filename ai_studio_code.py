@@ -5,7 +5,7 @@ import streamlit as st
 import os
 import time
 from google import genai
-from google.genai import types # IMPORTANTE: Adicione esta linha se não tiver
+from google.genai import types
 
 # --- CONFIGURAÇÃO INICIAL DA PÁGINA (Deve ser a primeira coisa!) ---
 st.set_page_config(page_title="Assistente SAP-SC", layout="centered")
@@ -68,18 +68,41 @@ if prompt := st.chat_input("Como posso ajudar com as normas do presídio?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-with st.chat_message("assistant"):
+    with st.chat_message("assistant"):
         try:
-            # O segredo está em garantir que o nome do modelo esteja correto para esta versão da biblioteca
+            # 1. Definimos o nome do modelo sem o prefixo "models/"
+            nome_modelo = "gemini-1.5-flash"
+            
+            # 2. Criamos o conteúdo: Arquivos + Pergunta do Usuário
+            # Certifique-se de que 'base_conhecimento' seja uma lista
+            conteudo = st.session_state.base_conhecimento + [prompt]
+            
+            # 3. Chamada da API com a configuração explícita
             response = client.models.generate_content(
-                model="gemini-1.5-flash", # Tente apenas o nome simples
-                contents=st.session_state.base_conhecimento + [prompt],
+                model=nome_modelo,
+                contents=conteudo,
                 config=types.GenerateContentConfig(
-                    system_instruction="Você é um assistente do sistema penal de SC. Responda com base nos PDFs.",
-                    temperature=0.1 # Deixando mais preciso
+                    system_instruction="""Você é um assistente do sistema penal de SC. 
+                    Responda para familiares (simples) e advogados (técnico). 
+                    Baseie-se APENAS nos PDFs. Se não souber, peça para falar com um servidor.""",
+                    temperature=0.1, # Mantém a resposta focada no documento
                 )
             )
+            
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
+
         except Exception as e:
-            st.error(f"Erro ao gerar resposta: {e}")
+            # Se o erro 404 persistir, vamos tentar o modelo 2.0 que é nativo desta biblioteca
+            if "404" in str(e):
+                st.warning("Tentando conexão alternativa com modelo estável...")
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-2.0-flash-exp", # Versão mais compatível com a biblioteca nova
+                        contents=st.session_state.base_conhecimento + [prompt]
+                    )
+                    st.markdown(response.text)
+                except Exception as e2:
+                    st.error(f"Erro persistente: {e2}")
+            else:
+                st.error(f"Erro ao gerar resposta: {e}")
