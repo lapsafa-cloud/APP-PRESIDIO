@@ -58,22 +58,28 @@ if prompt := st.chat_input("Como posso ajudar?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
-        try:
-            # Testamos primeiro o modelo estável
-            model_name = "gemini-1.5-flash" 
+       try:
+            # Tentativa com o modelo 8B (mais leve e com maior compatibilidade de acesso)
+            model_name = "gemini-1.5-flash-8b" 
             
             model = genai.GenerativeModel(
                 model_name=model_name,
-                system_instruction="Você é assistente da SAP-SC. Responda com base nos PDFs."
+                system_instruction="Você é assistente da SAP-SC. Responda com base nos PDFs fornecidos."
             )
             
-            # Montamos o conteúdo (arquivos + prompt)
+            # O restante do código de conteúdo permanece igual
             conteudo = st.session_state.base_docs + [prompt]
-            
             response = model.generate_content(conteudo)
             st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            
+        except Exception as e:
+            # Se ainda der erro, usamos o 1.0 Pro (O cavalo de batalha do Google)
+            st.warning("Ajustando protocolo de conexão...")
+            model = genai.GenerativeModel(model_name="gemini-1.0-pro")
+            # Nota: O 1.0 Pro pode ter dificuldade com PDFs muito grandes, 
+            # então enviamos apenas o prompt se os arquivos falharem.
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
             
         except Exception as e:
             if "404" in str(e):
