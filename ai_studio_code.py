@@ -5,6 +5,7 @@ import streamlit as st
 import os
 import time
 from google import genai
+from google.genai import types # IMPORTANTE: Adicione esta linha se não tiver
 
 # --- CONFIGURAÇÃO INICIAL DA PÁGINA (Deve ser a primeira coisa!) ---
 st.set_page_config(page_title="Assistente SAP-SC", layout="centered")
@@ -67,15 +68,16 @@ if prompt := st.chat_input("Como posso ajudar com as normas do presídio?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+with st.chat_message("assistant"):
         try:
-            # Monta o contexto enviando os arquivos + a pergunta
-            conteudo_completo = st.session_state.base_conhecimento + [prompt]
-            
+            # O segredo está em garantir que o nome do modelo esteja correto para esta versão da biblioteca
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=conteudo_completo,
-                config={'system_instruction': "Você é um assistente jurídico/administrativo do sistema penal de SC. Use uma linguagem clara para familiares e técnica para advogados. Baseie-se APENAS nos PDFs fornecidos. Se não souber, peça para contatarem um servidor."}
+                model="gemini-1.5-flash", # Tente apenas o nome simples
+                contents=st.session_state.base_conhecimento + [prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction="Você é um assistente do sistema penal de SC. Responda com base nos PDFs.",
+                    temperature=0.1 # Deixando mais preciso
+                )
             )
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
