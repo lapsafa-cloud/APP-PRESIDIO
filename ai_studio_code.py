@@ -3,23 +3,23 @@ import google.generativeai as genai
 import os
 import time
 
-# 1. Configuração da Página e Estilo
-st.set_page_config(page_title="Assistente SAP-SC", layout="centered")
-st.title("⚖️ Assistente do Sistema Penal - SC")
-st.caption("Protótipo de Extensão Universitária - Administração")
+# 1. Configuração de Interface Institucional
+st.set_page_config(page_title="Consultoria Técnica - SAP-SC", layout="wide")
+st.title("⚖️ Sistema de Apoio Técnico - SAP/SEJURI")
+st.subheader("Consulta Integrada: Portaria 2189/2025")
 
-# 2. Configuração da Chave API
-# Certifique-se de que o nome no Streamlit Secrets é exatamente GEMINI_API_KEY
-api_key = os.environ.get("GEMINI_API_KEY")
+# 2. Protocolo de Segurança e Chave API
+# A chave deve estar configurada nos 'Secrets' do Streamlit Cloud como GEMINI_API_KEY
+api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Chave API não encontrada! Configure GEMINI_API_KEY nos Secrets do Streamlit.")
+    st.error("Erro de Configuração: Chave API não detectada no ambiente.")
     st.stop()
 
 genai.configure(api_key=api_key)
 
-# 3. Função Robusta para Carregar os PDFs
-def carregar_arquivos():
+# 3. Processamento da Base Normativa (PDFs)
+def processar_base_legal():
     pasta = "documentos"
     if not os.path.exists(pasta):
         os.makedirs(pasta)
@@ -29,82 +29,83 @@ def carregar_arquivos():
     referencias = []
     
     if not arquivos_pdf:
-        st.info("Nenhum PDF encontrado na pasta 'documentos'.")
+        st.info("Aguardando inserção de documentos normativos na base.")
         return []
     
     for nome in arquivos_pdf:
         caminho = os.path.join(pasta, nome)
         try:
-            with st.status(f"Lendo {nome}...", expanded=False) as s:
-                # Upload para o Google
+            with st.status(f"Indexando: {nome}", expanded=False) as s:
+                # Upload para o motor de IA
                 file_ref = genai.upload_file(path=caminho, display_name=nome)
                 
-                # Loop de espera (Check de estado)
-                timeout = 0
-                while file_ref.state.name == "PROCESSING" and timeout < 30:
+                # Aguarda validação do arquivo
+                tentativas = 0
+                while file_ref.state.name == "PROCESSING" and tentativas < 15:
                     time.sleep(2)
                     file_ref = genai.get_file(file_ref.name)
-                    timeout += 2
+                    tentativas += 1
                 
                 if file_ref.state.name == "ACTIVE":
                     referencias.append(file_ref)
-                    s.update(label=f"✅ {nome} pronto", state="complete")
-                else:
-                    st.error(f"O arquivo {nome} falhou no processamento.")
+                    s.update(label=f"Arquivo {nome} carregado", state="complete")
         except Exception as e:
-            st.error(f"Erro no upload de {nome}: {e}")
+            st.error(f"Falha no processamento do ficheiro {nome}: {e}")
             
     return referencias
 
-# 4. Inicialização de Memória do Chat
+# 4. Gestão de Memória e Sessão
 if "base_docs" not in st.session_state:
-    st.session_state.base_docs = carregar_arquivos()
+    st.session_state.base_docs = processar_base_legal()
     st.session_state.messages = []
 
-# Exibe histórico das mensagens
+# Histórico de Consultas
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. Lógica de Resposta com Fallback de Modelos
-if prompt := st.chat_input("Como posso ajudar?"):
+# 5. Interface de Consulta e Processamento de Respostas
+if prompt := st.chat_input("Digite sua dúvida técnica sobre a Portaria:"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Tentamos os modelos em ordem de compatibilidade para evitar erro 404
-        modelos_para_testar = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.0-pro"]
+        # Modelos disponíveis conforme plano de faturamento ativo
+        modelos_disponiveis = ["gemini-1.5-pro", "gemini-1.5-flash"]
         sucesso = False
 
-        for nome_modelo in modelos_para_testar:
+        for model_id in modelos_disponiveis:
             if sucesso: break
             try:
-                # Se for o 1.0 Pro, ele não aceita arquivos PDF diretamente no contents
-                # Então fazemos essa distinção
                 model = genai.GenerativeModel(
-                    model_name=nome_modelo,
-                    system_instruction="Você é assistente da SAP-SC. Use os PDFs como base. Se não souber, peça para contatarem um servidor."
+                    model_name=model_id,
+                    system_instruction=(
+                        "Você é um assistente técnico especializado na Secretaria de Administração Prisional (SAP-SC). "
+                        "Sua função é fornecer informações precisas com base na Portaria 2189/2025. "
+                        "Responda de forma formal e técnica. Se a informação não constar nos documentos fornecidos, "
+                        "instrua o usuário a consultar o Diário Oficial ou o setor responsável pelo DPP."
+                    )
                 )
                 
-                if nome_modelo == "gemini-1.0-pro":
-                    # O 1.0 Pro lê apenas texto
-                    response = model.generate_content(prompt)
-                else:
-                    # Modelos 1.5 aceitam PDF + Texto
-                    conteudo = st.session_state.base_docs + [prompt]
-                    response = model.generate_content(conteudo)
+                # Executa a geração com os documentos anexados
+                payload = st.session_state.base_docs + [prompt]
+                response = model.generate_content(payload)
                 
-                st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
+                resposta = response.text
+                st.markdown(resposta)
+                st.session_state.messages.append({"role": "assistant", "content": resposta})
                 sucesso = True
                 
             except Exception as e:
-                if "404" in str(e) or "not found" in str(e).lower():
-                    continue # Tenta o próximo modelo da lista
+                # Caso o modelo Pro falhe por cota ou ativação, o Flash assume o processamento
+                if "429" in str(e) or "quota" in str(e).lower():
+                    continue
+                elif "404" in str(e):
+                    continue
                 else:
-                    st.error(f"Erro técnico: {e}")
+                    st.error(f"Erro operacional: {e}")
                     break
         
         if not sucesso:
-            st.error("Não foi possível conectar aos modelos do Google. Verifique sua cota e sua Chave API.") 	
+            st.warning("Sistema temporariamente indisponível. Verifique a conta de faturamento no console de gestão.")
