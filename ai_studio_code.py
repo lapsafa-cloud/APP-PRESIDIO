@@ -2,26 +2,20 @@ import streamlit as st
 from google import genai
 import os
 
-st.title("Teste de Conexão SAP-SC")
+# 1. Use o cliente padrão
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-# Garanta que a chave esteja nos Secrets do Streamlit como GEMINI_API_KEY
-api_key = st.secrets.get("GEMINI_API_KEY")
-
-if not api_key:
-    st.error("Chave não encontrada nos Secrets!")
-    st.stop()
-
-client = genai.Client(api_key=api_key)
-
-if st.button("Testar Conexão com Gemini"):
-    try:
-        # Teste simples sem documentos
-        response = client.models.generate_content(
-            model="gemini-1.5-flash", 
-            contents="Olá! Você está ativo para a SAP-SC?"
-        )
-        st.success("✅ Conexão estabelecida!")
-        st.write("Resposta da IA:", response.text)
-    except Exception as e:
-        st.error(f"❌ Erro ainda persiste: {e}")
-        st.info("Se aparecer 404, volte ao Google Cloud Console e ative a 'Generative Language API'.")
+try:
+    # Tente forçar o caminho completo do modelo
+    response = client.models.generate_content(
+        model="gemini-1.5-flash", # Se der 404, tente "models/gemini-1.5-flash"
+        contents="Oi! Se você ler isso, a SAP-SC está conectada."
+    )
+    st.success("✅ Finalmente conectado!")
+    st.write(response.text)
+except Exception as e:
+    st.error(f"Erro: {e}")
+    # Se ainda der 404, o comando abaixo vai listar o que VOCÊ pode usar:
+    st.write("Modelos que sua chave enxerga:")
+    for m in client.models.list():
+        st.text(m.name)
