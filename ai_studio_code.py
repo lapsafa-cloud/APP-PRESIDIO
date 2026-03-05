@@ -1,21 +1,68 @@
 import streamlit as st
 from google import genai
+from google.genai import types
 import os
+import time
 
-# 1. Use o cliente padrão
+# --- CONFIGURAÇÃO SAP-SC ---
+st.set_page_config(page_title="Consultoria Técnica - SAP-SC", layout="wide")
+st.title("⚖️ Sistema de Apoio Técnico - SAP/SEJURI")
+st.subheader("Consulta Integrada: Portaria 2189/2025")
+
+# Inicializa o cliente com a sua chave que já está em 'Nível 1'
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-try:
-    # Tente forçar o caminho completo do modelo
-    response = client.models.generate_content(
-        model="gemini-1.5-flash", # Se der 404, tente "models/gemini-1.5-flash"
-        contents="Oi! Se você ler isso, a SAP-SC está conectada."
-    )
-    st.success("✅ Finalmente conectado!")
-    st.write(response.text)
-except Exception as e:
-    st.error(f"Erro: {e}")
-    # Se ainda der 404, o comando abaixo vai listar o que VOCÊ pode usar:
-    st.write("Modelos que sua chave enxerga:")
-    for m in client.models.list():
-        st.text(m.name)
+def processar_base_legal():
+    pasta = "documentos"
+    if not os.path.exists(pasta): return []
+    
+    arquivos = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf")]
+    referencias = []
+    
+    for nome in arquivos:
+        caminho = os.path.join(pasta, nome)
+        try:
+            with st.status(f"Indexando: {nome}", expanded=False) as s:
+                file_ref = client.files.upload(file=caminho)
+                while file_ref.state.name == "PROCESSING":
+                    time.sleep(2)
+                    file_ref = client.files.get(name=file_ref.name)
+                
+                if file_ref.state.name == "ACTIVE":
+                    referencias.append(file_ref)
+                    s.update(label=f"✅ {nome} carregado", state="complete")
+        except Exception as e:
+            st.error(f"Erro em {nome}: {e}")
+    return referencias
+
+if "base_docs" not in st.session_state:
+    st.session_state.base_docs = processar_base_legal()
+    st.session_state.messages = []
+
+# Interface de Chat
+if prompt := st.chat_input("Sua dúvida sobre a Portaria:"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"): st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        # MODELOS ATUALIZADOS CONFORME SUA LISTA
+        model_id = "gemini-2.0-flash" 
+        
+        try:
+            config = types.GenerateContentConfig(
+                system_instruction="Você é assistente técnico da SAP-SC. Use a Portaria 2189/2025 como base única.",
+                temperature=0.1
+            )
+            
+            conteudo = st.session_state.base_docs + [prompt]
+            response = client.models.generate_content(
+                model=model_id,
+                contents=conteudo,
+                config=config
+            )
+            
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            
+        except Exception as e:
+            st.error(f"Erro operacional: {e}")
