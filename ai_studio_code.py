@@ -30,26 +30,30 @@ def processar_base_legal():
     referencias = []
     
     if not arquivos_pdf:
-        st.info("Aguardando inserção de documentos normativos na pasta 'documentos'.")
+        st.info("Aguardando inserção de documentos normativos na base.")
         return []
     
     for nome in arquivos_pdf:
         caminho = os.path.join(pasta, nome)
         try:
             with st.status(f"Indexando: {nome}", expanded=False) as s:
-                # Upload usando o novo SDK
-                file_ref = client.files.upload(path=caminho)
+                # CORREÇÃO AQUI: 'file' em vez de 'path'
+                file_ref = client.files.upload(file=caminho)
                 
-                # Aguarda validação
-                while file_ref.state.name == "PROCESSING":
+                # Aguarda validação do arquivo
+                tentativas = 0
+                while file_ref.state.name == "PROCESSING" and tentativas < 15:
                     time.sleep(2)
                     file_ref = client.files.get(name=file_ref.name)
+                    tentativas += 1
                 
                 if file_ref.state.name == "ACTIVE":
                     referencias.append(file_ref)
                     s.update(label=f"Arquivo {nome} carregado", state="complete")
+                else:
+                    st.error(f"Arquivo {nome} está em estado: {file_ref.state.name}")
         except Exception as e:
-            st.error(f"Falha no processamento de {nome}: {e}")
+            st.error(f"Falha no processamento do ficheiro {nome}: {e}")
             
     return referencias
 
